@@ -45,10 +45,17 @@ io.on("connection", (socket) => {
   });
 
   // --- Connection request flow ---
-  socket.on("request-connection", ({ room, from }) => {
-    socket.to(room).emit("incoming-request", { from });
-    console.log(`Connection request from ${from} in room ${room}`);
-  });
+  socket.on("request-connection", ({ to, from }) => {
+  // find target client by pubkey mapping
+  for (let [id, s] of io.sockets.sockets) {
+    if (s.handshake.query && s.handshake.query.pub === to) {
+      io.to(id).emit("incoming-request", { from });
+      console.log(`Connection request from ${from} to ${to}`);
+      break;
+    }
+  }
+});
+
 
   socket.on("accept-connection", ({ room }) => {
     socket.to(room).emit("request-accepted");
