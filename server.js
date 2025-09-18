@@ -32,7 +32,7 @@ io.on("connection", (socket) => {
     const clients = io.sockets.adapter.rooms.get(room);
     const count = clients ? clients.size : 0;
 
-    if (count >= 3) {
+    if (count >= 2) {
       socket.emit("room-full", room);
       console.log(`Room ${room} is full. Rejecting ${socket.id}`);
       return;
