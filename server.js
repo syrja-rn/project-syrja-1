@@ -54,37 +54,42 @@ io.on("connection", (socket) => {
 
   // --- Connection request flow ---
   socket.on("request-connection", ({ to, from, fromLabel }) => {
-    for (let [id, s] of io.sockets.sockets) {
-      const sPub = getSocketPub(s);
-      if (sPub === to) {
-        io.to(id).emit("incoming-request", { from, fromLabel });
-        console.log(`Connection request from ${from} to ${to}`);
-        break;
-      }
+  for (let [id, s] of io.sockets.sockets) {
+    const sPub = getSocketPub(s);
+    if (sPub === to) {
+      io.to(id).emit("incoming-request", { from, fromLabel });
+      console.log(`Connection request: ${from} → ${to}`);
+      return;
     }
-  });
+  }
+  console.log(`⚠️ Could not deliver request from ${from} to ${to} (not connected)`);
+});
 
   socket.on("accept-connection", ({ to, from }) => {
-    for (let [id, s] of io.sockets.sockets) {
-      const sPub = getSocketPub(s);
-      if (sPub === to) {
-        io.to(id).emit("request-accepted", { from });
-        console.log(`Connection accepted: ${from} → ${to}`);
-        break;
-      }
+  for (let [id, s] of io.sockets.sockets) {
+    const sPub = getSocketPub(s);
+    if (sPub === to) {
+      io.to(id).emit("request-accepted", { from });
+      console.log(`✅ Connection accepted by ${from} for ${to}`);
+      return;
     }
-  });
+  }
+  console.log(`⚠️ Accept could not be delivered: ${from} → ${to}`);
+});
+
 
   socket.on("reject-connection", ({ to, from }) => {
-    for (let [id, s] of io.sockets.sockets) {
-      const sPub = getSocketPub(s);
-      if (sPub === to) {
-        io.to(id).emit("request-rejected", { from });
-        console.log(`Connection rejected: ${from} → ${to}`);
-        break;
-      }
+  for (let [id, s] of io.sockets.sockets) {
+    const sPub = getSocketPub(s);
+    if (sPub === to) {
+      io.to(id).emit("request-rejected", { from });
+      console.log(`❌ Connection rejected by ${from} for ${to}`);
+      return;
     }
-  });
+  }
+  console.log(`⚠️ Reject could not be delivered: ${from} → ${to}`);
+});
+
 
   // --- Handle disconnects ---
   socket.on("disconnect", () => {
