@@ -13,16 +13,19 @@ app.get("/", (req, res) => {
   res.send("✅ Signaling server is running");
 });
 
+// Map: pubKey -> socket.id
+const userSockets = {};
+
 io.on("connection", (socket) => {
   console.log("Client connected:", socket.id);
 
-  // helper: extract the pubkey this socket advertised
-  function getSocketPub(s) {
-    if (!s || !s.handshake) return null;
-    return (s.handshake.auth && s.handshake.auth.pub)
-      || (s.handshake.query && s.handshake.query.pub)
-      || null;
-  }
+  // --- Registration: each client must tell us their pubKey ---
+  socket.on("register", (pubKey) => {
+    if (!pubKey) return;
+    userSockets[pubKey] = socket.id;
+    socket.data.pubKey = pubKey; // store on socket for cleanup
+    console.log(`🔑 Registered: ${pubKey.slice(0, 12)}... -> ${socket.id}`);
+  });
 
   // --- Room join with 2-user limit ---
   socket.on("join", (room) => {
@@ -54,50 +57,48 @@ io.on("connection", (socket) => {
 
   // --- Connection request flow ---
   socket.on("request-connection", ({ to, from, fromLabel }) => {
-  for (let [id, s] of io.sockets.sockets) {
-    const sPub = getSocketPub(s);
-    if (sPub === to) {
-      io.to(id).emit("incoming-request", { from, fromLabel });
-      console.log(`Connection request: ${from} → ${to}`);
-      return;
+    const targetId = userSockets[to];
+    if (targetId) {
+      io.to(targetId).emit("incoming-request", { from, fromLabel });
+      console.log(`📨 Connection request: ${from.slice(0, 12)} → ${to.slice(0, 12)}`);
+    } else {
+      console.log(`⚠️ Could not deliver request from ${from} to ${to} (not registered)`);
     }
-  }
-  console.log(`⚠️ Could not deliver request from ${from} to ${to} (not connected)`);
-});
+  });
 
   socket.on("accept-connection", ({ to, from }) => {
-  for (let [id, s] of io.sockets.sockets) {
-    const sPub = getSocketPub(s);
-    if (sPub === to) {
-      io.to(id).emit("request-accepted", { from });
-      console.log(`✅ Connection accepted by ${from} for ${to}`);
-      return;
+    const targetId = userSockets[to];
+    if (targetId) {
+      io.to(targetId).emit("request-accepted", { from });
+      console.log(`✅ Connection accepted by ${from.slice(0, 12)} for ${to.slice(0, 12)}`);
+    } else {
+      console.log(`⚠️ Accept could not be delivered: ${from} → ${to}`);
     }
-  }
-  console.log(`⚠️ Accept could not be delivered: ${from} → ${to}`);
-});
-
+  });
 
   socket.on("reject-connection", ({ to, from }) => {
-  for (let [id, s] of io.sockets.sockets) {
-    const sPub = getSocketPub(s);
-    if (sPub === to) {
-      io.to(id).emit("request-rejected", { from });
-      console.log(`❌ Connection rejected by ${from} for ${to}`);
-      return;
+    const targetId = userSockets[to];
+    if (targetId) {
+      io.to(targetId).emit("request-rejected", { from });
+      console.log(`❌ Connection rejected by ${from.slice(0, 12)} for ${to.slice(0, 12)}`);
+    } else {
+      console.log(`⚠️ Reject could not be delivered: ${from} → ${to}`);
     }
-  }
-  console.log(`⚠️ Reject could not be delivered: ${from} → ${to}`);
-});
-
+  });
 
   // --- Handle disconnects ---
   socket.on("disconnect", () => {
     console.log("Client disconnected:", socket.id);
 
+    // Remove pubKey mapping
+    if (socket.data.pubKey) {
+      delete userSockets[socket.data.pubKey];
+      console.log(`🗑️ Unregistered: ${socket.data.pubKey.slice(0, 12)}...`);
+    }
+
     // Notify peers in all rooms this socket was part of
     socket.rooms.forEach((room) => {
-      if (room !== socket.id) { // skip socket’s private room
+      if (room !== socket.id) {
         socket.to(room).emit("peer-left", { peerId: socket.id });
       }
     });
