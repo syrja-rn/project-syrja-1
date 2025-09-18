@@ -47,13 +47,13 @@ io.on("connection", (socket) => {
 
   // --- Forward WebRTC signaling ---
   socket.on("signal", ({ room, payload }) => {
-    socket.to(room).emit("signal", payload);
-  });
+  socket.to(room).emit("signal", { room, payload });
+});
 
-  // --- Forward authentication handshake ---
-  socket.on("auth", ({ room, payload }) => {
-    socket.to(room).emit("auth", payload);
-  });
+socket.on("auth", ({ room, payload }) => {
+  socket.to(room).emit("auth", { room, payload });
+});
+
 
   // --- Connection request flow ---
   socket.on("request-connection", ({ to, from, fromLabel }) => {
