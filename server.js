@@ -26,7 +26,13 @@ io.on("connection", (socket) => {
   userSockets[key] = socket.id;
   socket.data.pubKey = key;
   console.log(`🔑 Registered: ${key.slice(0,12)}... -> ${socket.id}`);
+  broadcastPresence();
 });
+
+function broadcastPresence(){
+  io.emit("presence-update", { online: Object.keys(userSockets) });
+}
+
 
 
   // --- Room join with 2-user limit ---
@@ -121,6 +127,7 @@ socket.on("auth", ({ room, to, payload }) => {
     if (socket.data.pubKey) {
       delete userSockets[socket.data.pubKey];
       console.log(`🗑️ Unregistered: ${socket.data.pubKey.slice(0, 12)}...`);
+      broadcastPresence();
     }
 
     // Notify peers in all rooms this socket was part of
