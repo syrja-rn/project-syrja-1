@@ -21,11 +21,13 @@ io.on("connection", (socket) => {
 
   // --- Registration: each client must tell us their pubKey ---
   socket.on("register", (pubKey) => {
-    if (!pubKey) return;
-    userSockets[pubKey] = socket.id;
-    socket.data.pubKey = pubKey; // store on socket for cleanup
-    console.log(`🔑 Registered: ${pubKey.slice(0, 12)}... -> ${socket.id}`);
-  });
+  if (!pubKey) return;
+  const key = normKey(pubKey);
+  userSockets[key] = socket.id;
+  socket.data.pubKey = key;
+  console.log(`🔑 Registered: ${key.slice(0,12)}... -> ${socket.id}`);
+});
+
 
   // --- Room join with 2-user limit ---
   socket.on("join", (room) => {
@@ -45,14 +47,39 @@ io.on("connection", (socket) => {
     socket.to(room).emit("peer-joined", { peerId: socket.id });
   });
 
-  // --- Forward WebRTC signaling ---
-  socket.on("signal", ({ room, payload }) => {
-  socket.to(room).emit("signal", { room, payload });
+ // small helper: normalize base64-like key strings
+function normKey(k){ return (typeof k === 'string') ? k.replace(/\s+/g,'') : k; }
+
+// --- Forward WebRTC signaling --- (try direct-to-socket 'to' if present; fallback to room)
+socket.on("signal", ({ room, to, payload }) => {
+  if(to){
+    const targetId = userSockets[normKey(to)];
+    if(targetId){
+      io.to(targetId).emit("signal", payload);
+      return;
+    }
+    console.log('signal: target not registered yet:', (to||''));
+  }
+  if(room){
+    socket.to(room).emit("signal", payload);
+  }
 });
 
-socket.on("auth", ({ room, payload }) => {
-  socket.to(room).emit("auth", { room, payload });
+// --- Forward authentication handshake --- (same behavior)
+socket.on("auth", ({ room, to, payload }) => {
+  if(to){
+    const targetId = userSockets[normKey(to)];
+    if(targetId){
+      io.to(targetId).emit("auth", payload);
+      return;
+    }
+    console.log('auth: target not registered yet:', (to||''));
+  }
+  if(room){
+    socket.to(room).emit("auth", payload);
+  }
 });
+
 
 
   // --- Connection request flow ---
