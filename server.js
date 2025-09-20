@@ -21,29 +21,10 @@ function normKey(k) {
   return (typeof k === 'string') ? k.replace(/\s+/g, '') : k;
 }
 
-// Helper: reusable function to forward events
-const forwardEvent = (eventName, socket) => {
-  socket.on(eventName, ({ room, to, payload }) => {
-    if (to) {
-      const targetId = userSockets[normKey(to)];
-      if (targetId) {
-        // Forward to the specific socket ID of the recipient
-        io.to(targetId).emit(eventName, { room, payload });
-        return;
-      }
-      console.log(`${eventName}: target not registered yet:`, (to || ''));
-    }
-    // Fallback to broadcasting to the room if 'to' is not found
-    if (room) {
-      socket.to(room).emit(eventName, { room, payload });
-    }
-  });
-};
-
 io.on("connection", (socket) => {
   console.log("Client connected:", socket.id);
 
-  // --- Registration: client provides its public key ---
+  // --- Registration: each client must tell us their pubKey ---
   socket.on("register", (pubKey) => {
     if (!pubKey) return;
     const key = normKey(pubKey);
@@ -62,25 +43,37 @@ io.on("connection", (socket) => {
       console.log(`Room ${room} is full. Rejecting ${socket.id}`);
       return;
     }
-
     socket.join(room);
     console.log(`Client ${socket.id} joined ${room}`);
     socket.to(room).emit("peer-joined", { peerId: socket.id });
   });
 
-  // --- Forward WebRTC and Auth events ---
-  forwardEvent("signal", socket);
-  forwardEvent("auth", socket);
+  // --- Forward WebRTC signaling & Auth Handshake to a room ---
+  socket.on("signal", ({ room, payload }) => {
+    socket.to(room).emit("signal", payload);
+  });
+  socket.on("auth", ({ room, payload }) => {
+    socket.to(room).emit("auth", payload);
+  });
+
+  // --- This handles the initial "ping" for notifications ---
+  socket.on("request-connection", ({ to, from }) => {
+    const targetId = userSockets[normKey(to)];
+    if (targetId) {
+      io.to(targetId).emit("incoming-request", { from: normKey(from) });
+      console.log(`📨 Connection request: ${from.slice(0, 12)} → ${to.slice(0, 12)}`);
+    } else {
+      console.log(`⚠️ Could not deliver request from ${from} to ${to} (not registered)`);
+    }
+  });
 
   // --- Handle disconnects ---
   socket.on("disconnect", () => {
     console.log("Client disconnected:", socket.id);
-
     if (socket.data.pubKey) {
       delete userSockets[socket.data.pubKey];
       console.log(`🗑️ Unregistered: ${socket.data.pubKey.slice(0, 12)}...`);
     }
-
     socket.rooms.forEach((room) => {
       if (room !== socket.id) {
         socket.to(room).emit("peer-left", { peerId: socket.id });
